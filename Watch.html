@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>1-3시계</title>
+<style>
+  :root{
+    --page-bg: #ffffff;   /* 흰색 배경 */
+    --size: 420px;        /* 기본 시계 지름 (슬라이더로 변경됨) */
+    --face: #ffffff;      /* 시계판 */
+    --rim: #000000;       /* 검정 테두리 */
+    --rim-width: 8px;     /* 테두리 두께 */
+    --number: #000000;    /* 숫자색 */
+    --tick: #000000;      /* 눈금색 */
+    --hand: #000000;      /* 바늘색 */
+    --cap: #000000;       /* 중앙 캡 포인트 */
+    --shadow: 0 4px 20px rgba(0,0,0,.15);
+    --tick-origin: 202px;
+  }
+
+  *{box-sizing: border-box}
+  html, body{height:100%}
+  body{
+    margin:0; background: var(--page-bg);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Apple SD Gothic Neo, Noto Sans KR, Helvetica, Arial;
+    overflow:hidden;
+  }
+
+  /* 시계를 자유 배치하기 위한 레이어(드래그 대상) */
+  .clock-wrap{
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    touch-action: none;  /* 터치 드래그 안정화 */
+    user-select: none;
+    cursor: grab;
+  }
+  .clock-wrap.dragging{ cursor: grabbing; }
+
+  .clock{
+    width: var(--size); aspect-ratio: 1/1;
+    border-radius: 50%;
+    background: var(--face);
+    border: var(--rim-width) solid var(--rim);
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+
+  /* 숫자와 눈금 레이어 */
+  .ticks, .numbers{ 
+    position:absolute; 
+    left:0; top:0; right:0; bottom:0; 
+    width: 100%; 
+    height: 100%; 
+  }
+
+  /* 분 눈금(60개) */
+  .tick{
+    background-color: pink;
+    position:absolute; 
+    left:50%; 
+    top:0;
+    width:2px; 
+    height:15px;
+    background: var(--tick); 
+    opacity:.6;
+    transform-origin: 50% 202px; /* 정확히 시계 반지름만큼 */
+    transform: translateX(-50%);
+    border-radius: 1px;
+    margin-top: 1px;
+    transform-origin: 50% var(--tick-origin);
+  }
+  /* 시간 눈금(12개) – 좀 더 굵고 길게 */
+  .tick.major{ 
+    width:4px; 
+    height:25px; 
+    opacity:1;
+    margin-top: 1px;
+  }
+
+  /* 숫자 */
+  .num{
+    position:absolute;
+    width:3ch; height:3ch; 
+    display:grid; place-items:center;
+    color: var(--number);
+    font-weight: 600;
+    font-size: clamp(20px, 6.5vmin, 36px);
+    letter-spacing:-.01em;
+  }
+
+  /* 바늘 */
+  .hand{
+    position:absolute; left:50%; top:50%;
+    transform: translate(-50%,-100%) rotate(0deg);
+    transform-origin: 50% calc(100% - 10px);
+    background: var(--hand);
+    border-radius: 2px;
+  }
+  .hand.hour{ width:6px;  height:25%; border-radius: 3px; }
+  .hand.min { width:4px;  height:35%; border-radius: 2px; }
+  .hand.sec { width:1px;  height:38%; background: #ff0000; border-radius: 1px; }
+
+  .cap{
+    position:absolute; left:50%; top:50%;
+    width:8px; height:8px; transform:translate(-50%, -50%);
+    background: var(--cap);
+    border-radius:50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+
+  /* 디지털 시간 표시 */
+  .digital{
+    margin-top: 20px;
+    text-align:center;
+    color:#000;
+    font-weight:600;
+    font-size: 4rem;
+    font-variant-numeric: tabular-nums;
+    background: #f8f8f8;
+    padding: .5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+  }
+
+  /* 우상단 컨트롤 패널 */
+  .panel{
+    position: fixed; right: 10px; top: 10px;
+    background: #f8f8f8; border:1px solid #ddd; border-radius: .75rem;
+    padding: .6rem .8rem; display:flex; gap:.6rem; align-items:center;
+    box-shadow: 0 2px 10px rgba(0,0,0,.1);
+  }
+  .panel label{ font-size:.9rem; color:#333 }
+  .panel input[type="range"]{ width: 180px; }
+  .hint{
+    position: fixed; left: 10px; bottom: 10px; color:#333;
+    background:#f8f8f8; border:1px solid #ddd; border-radius:.5rem;
+    padding:.4rem .55rem; font-size:.85rem;
+  }
+</style>
+</head>
+<body>
+
+  <!-- 크기 조절 패널 -->
+  <div class="panel">
+    <label for="size">크기</label>
+    <input id="size" type="range" min="240" max="700" value="420" />
+    <span id="sizeVal" style="min-width:60px; display:inline-block; text-align:right;">420px</span>
+  </div>
+
+  <!-- 드래그 가능한 시계 래퍼 -->
+  <div class="clock-wrap" id="wrap" aria-label="드래그하여 위치를 옮길 수 있는 아날로그 시계">
+    <div class="clock" id="clock">
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+      <div class="numbers" id="numbers" aria-hidden="true"></div>
+
+      <div class="hand hour" id="h"></div>
+      <div class="hand min"  id="m"></div>
+      <div class="hand sec"  id="s"></div>
+      <div class="cap" aria-hidden="true"></div>
+    </div>
+    <div class="digital" id="digital">--:--:--</div>
+  </div>
+
+<script>
+  /* ===== 눈금 + 숫자 그리기 ===== */
+  (function buildDial(){
+    const ticks = document.getElementById('ticks');
+    const nums  = document.getElementById('numbers');
+
+    // 60개 분 눈금 (5분마다 major)
+    for (let i=0;i<60;i++){
+      const t = document.createElement('div');
+      t.className = 'tick' + (i%5===0 ? ' major' : '');
+      t.style.transform = `translateX(-50%) rotate(${i*6}deg)`;
+      ticks.appendChild(t);
+    }
+
+    // 1~12 숫자
+    for (let n=1;n<=12;n++){
+      const el = document.createElement('div');
+      el.className = 'num';
+      const angle = (n-3)*30 * Math.PI/180; // 12시부터 시작, 30도씩
+      const radius = 85; // 시계 반지름의 85%
+      const x = 50 + Math.cos(angle) * 40; // 중심(50%) + 반지름 40%
+      const y = 50 + Math.sin(angle) * 40;
+      el.style.left = x + '%';
+      el.style.top = y + '%';
+      el.style.transform = 'translate(-50%, -50%)';
+      el.textContent = n;
+      nums.appendChild(el);
+    }
+  })();
+
+  /* ===== 시계 구동 + 디지털 시간 ===== */
+  const h = document.getElementById('h');
+  const m = document.getElementById('m');
+  const s = document.getElementById('s');
+  const digital = document.getElementById('digital');
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+    function to12(h){
+    const x = h % 12;
+    return x === 0 ? 12 : x;
+  }
+  function pad2(n){ return String(n).padStart(2, '0'); }
+
+  function render(){
+    const now = new Date();
+    const ms = now.getMilliseconds();
+    const sec = now.getSeconds() + ms/1000;
+    const min = now.getMinutes() + sec/60;
+    const hr  = (now.getHours()%12) + min/60;
+
+    // 아날로그 바늘
+    h.style.transform = `translate(-50%,-100%) rotate(${hr*30}deg)`;   // 360/12
+    m.style.transform = `translate(-50%,-100%) rotate(${min*6}deg)`;   // 360/60
+    s.style.transform = `translate(-50%,-100%) rotate(${sec*6}deg)`;   // 360/60
+
+    // 디지털 시간 (AM/PM 없이 1~12 반복)
+    const H24 = now.getHours();
+    const h12 = to12(H24);
+    digital.textContent =
+      `${pad2(h12)}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+
+    requestAnimationFrame(render);
+  }
+  render();
+
+  /* ===== 드래그로 위치 이동 (마우스/터치) ===== */
+  (function enableDrag(){
+    const wrap = document.getElementById('wrap');
+    let dragging = false;
+    let startX=0, startY=0, origX=0, origY=0;
+
+    const getPos = () => {
+      // transform 대신 left/top 절대값으로 관리 (픽셀 정확)
+      const style = window.getComputedStyle(wrap);
+      let left = parseFloat(style.left);
+      let top  = parseFloat(style.top);
+      // 초기엔 translate(-50%,-50%)이라 숫자가 NaN일 수 있어 리셋
+      if (Number.isNaN(left) || Number.isNaN(top)) {
+        const rect = wrap.getBoundingClientRect();
+        left = rect.left;
+        top = rect.top;
+      }
+      return {left, top};
+    };
+
+    const start = (clientX, clientY) => {
+      dragging = true;
+      wrap.classList.add('dragging');
+      startX = clientX; startY = clientY;
+      // 현재 위치 고정: transform 제거, 절대 left/top 세팅
+      const rect = wrap.getBoundingClientRect();
+      wrap.style.transform = 'none';
+      wrap.style.left = rect.left + 'px';
+      wrap.style.top  = rect.top  + 'px';
+      const pos = getPos();
+      origX = pos.left; origY = pos.top;
+    };
+
+    const move = (clientX, clientY) => {
+      if (!dragging) return;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      wrap.style.left = (origX + dx) + 'px';
+      wrap.style.top  = (origY + dy) + 'px';
+    };
+
+    const end = () => {
+      dragging = false;
+      wrap.classList.remove('dragging');
+    };
+
+    // 마우스
+    wrap.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      start(e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+    window.addEventListener('mouseup', end);
+
+    // 터치
+    wrap.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, {passive:true});
+    window.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      if (t) move(t.clientX, t.clientY);
+    }, {passive:true});
+    window.addEventListener('touchend', end);
+  })();
+
+  /* ===== 크기 슬라이더 ===== */
+    (function sizeControl(){
+    const range = document.getElementById('size');
+    const label = document.getElementById('sizeVal');
+    const root  = document.documentElement.style;
+
+    // 기준값: size=420px일 때 tick-origin=202px 이 "정확"
+    const baseSize = 420;
+    const baseOrigin = 202;
+    const ratio = baseOrigin / (baseSize / 2); // ≈ 0.9619
+
+    const apply = (v) => {
+      const sizePx = parseFloat(v);
+      root.setProperty('--size', sizePx + 'px');
+      label.textContent = sizePx + 'px';
+
+      // 같은 비율로 tick-origin 갱신
+      const origin = (sizePx / 2) * ratio;
+      root.setProperty('--tick-origin', origin + 'px');
+    };
+
+    apply(range.value);
+    range.addEventListener('input', () => apply(range.value));
+  })();
+</script>
+</body>
+</html>
